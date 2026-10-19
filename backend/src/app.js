@@ -6,6 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { config, isValidApiToken } from './config.js';
 import { createAuthRouter, requirePermission, requireSession } from './routes/auth.js';
 import { createFrontendUserRouter, createUserRouter } from './routes/users.js';
+import { createAgentRouter } from './routes/agents.js';
+import { createAgentAssetRouter } from './routes/assets.js';
+import { AgentDataStore } from './services/agentDataStore.js';
+import { AgentAssetService } from './services/agentAssetService.js';
 import { AuthService } from './services/authService.js';
 import { SessionStore } from './services/sessionStore.js';
 import { UserService } from './services/userService.js';
@@ -15,12 +19,17 @@ const frontendPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../fro
 export function createApp({
   userService = new UserService(),
   authService = new AuthService(),
-  sessionStore = new SessionStore({ ttlMs: config.AUTH_SESSION_TTL_MS })
+  sessionStore = new SessionStore({ ttlMs: config.AUTH_SESSION_TTL_MS }),
+  agentDataStore = new AgentDataStore(),
+  agentAssetService = new AgentAssetService(agentDataStore)
 } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.use(helmet());
-  app.use(express.json({ limit: '32kb' }));
+  app.use(express.json({
+    limit: '32kb',
+    verify(req, _res, buffer) { req.rawBodyBytes = buffer.length; }
+  }));
 
   // Permite solicitudes del origen configurado y responde los preflight del navegador.
   app.use((req, res, next) => {
@@ -48,6 +57,7 @@ export function createApp({
     if (req.method === 'GET') return requirePermission('users.view', 'assets.assign')(req, res, next);
     return requirePermission('users.write')(req, res, next);
   }, createFrontendUserRouter(userService));
+  app.use('/api/v1/assets', requirePermission('assets.view'), createAgentAssetRouter(agentAssetService));
 
   // Legacy endpoints retain the shared API-token contract.
   app.use('/api/users', (req, res, next) => {
@@ -58,6 +68,7 @@ export function createApp({
     }
     return next();
   });
+  app.use('/api/agents', createAgentRouter(agentDataStore));
 
   // Health queda público para que los sistemas de supervisión comprueben el proceso.
   app.get('/health', (_req, res) => res.json({ status: 'ok' }));

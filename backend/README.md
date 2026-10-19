@@ -43,6 +43,8 @@ La API queda en `http://localhost:3000`; `GET /health` comprueba que el proceso 
 | `LDAP_BIND_DN` | DN de la cuenta de servicio. |
 | `LDAP_BIND_PASSWORD` | Contraseña de la cuenta de servicio. Mantener fuera del control de versiones. |
 | `API_TOKEN` | Secreto Bearer de al menos 32 caracteres para la API LDAP legacy `/api/users`. |
+| `AGENT_DEVICE_TOKENS` | Mapa JSON de UUID de equipo a token Bearer individual (mínimo 32 caracteres), por ejemplo `{"22222222-2222-4222-8222-222222222222":"secreto-aleatorio-de-32-caracteres-minimo"}`. No reutilizar `API_TOKEN`. |
+| `AGENT_DATA_PATH` | Ruta opcional al archivo JSON persistente de datos del agente; por defecto `backend/data/agents.json`. |
 | `AUTH_SESSION_TTL_MS` | Duración de las sesiones en milisegundos (por defecto 1800000, 30 minutos). |
 | `LDAP_BASE_DN` | DN base del dominio, por ejemplo `DC=empresa,DC=local`. |
 | `LDAP_USERS_OU` | OU donde la API buscará y creará usuarios. |
@@ -76,6 +78,20 @@ El certificado autofirmado debe instalarse como confiable en los navegadores/equ
 ## Endpoints
 
 Las rutas de usuario versionadas usan un token de sesión emitido por `/api/v1/auth/login`. Las rutas legacy `/api/users` requieren `Authorization: Bearer <API_TOKEN>`. Los campos retornados nunca incluyen contraseñas ni atributos de credenciales.
+
+### API de agente Windows
+
+Las tres rutas aceptan `POST` con `Content-Type: application/json` y un token por dispositivo de `AGENT_DEVICE_TOKENS`. El `deviceId` del cuerpo debe coincidir con el UUID vinculado al token. Se rechaza un token desconocido con `401` y un equipo no autorizado con `403`. El agente debe apuntar a HTTPS en producción.
+
+| Método | Ruta | Contrato y éxito |
+| --- | --- | --- |
+| `POST` | `/api/agents/inventory` | Recibe la captura versión 1; guarda el último inventario por equipo y responde `200` con `{ accepted, inventoryId }`. |
+| `POST` | `/api/agents/heartbeat` | Actualiza el último heartbeat y hora de recepción del servidor; responde `200` con `{ accepted: true }`. |
+| `POST` | `/api/agents/activity` | Valida el sobre y las duraciones (máximo 16 KiB, intervalo hasta 7 días); guarda por `(deviceId, batchId)` y responde `200` con el `batchId` confirmado. |
+
+`GET /api/v1/assets` devuelve `{ items, total }` con una fila por equipo que haya reportado inventario. Mapea `computerName` a `name` y `serialNumber` a `serial`; el campo `status` informa `Activo` si el servidor recibió un heartbeat en los últimos 180 segundos, seguido de RAM instalada y capacidad total de volúmenes en unidades cortas (KiB/GiB/TiB). Si falta esa información se indica `s/d`. Requiere sesión con permiso `assets.view`. No se modificó el frontend; el campo `type`, ubicación y asignación no son proporcionados por este agente.
+
+Los reintentos de actividad con el mismo `batchId`, SID y mediciones se confirman idempotentemente aunque cambien el nombre de usuario o `receivedAtUtc`; el mismo ID con otro SID o mediciones devuelve `409`. Los errores de contrato devuelven `422`. El backend conserva estos datos en un archivo JSON con escritura atómica; limita el archivo a una sola instancia del servidor y requiere permisos de escritura restringidos. Para alta disponibilidad o retención amplia, sustituir este almacén local por una base de datos transaccional. Mantén `AGENT_DEVICE_TOKENS` y el archivo de datos fuera del control de versiones y usa tokens aleatorios distintos por equipo.
 
 ### Contrato compatible con GestioApp
 

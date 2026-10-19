@@ -10,6 +10,8 @@ const envSchema = z.object({
   LDAP_BIND_DN: z.string().min(1),
   LDAP_BIND_PASSWORD: z.string().min(1),
   API_TOKEN: z.string().min(32),
+  AGENT_DEVICE_TOKENS: z.string().optional().default('{}'),
+  AGENT_DATA_PATH: z.string().optional().default(''),
   AUTH_SESSION_TTL_MS: z.coerce.number().int().positive().default(1_800_000),
   LDAP_BASE_DN: z.string().min(1),
   LDAP_USERS_OU: z.string().min(1),
@@ -38,8 +40,22 @@ if (!parsed.success) {
 }
 
 const env = parsed.data;
+let agentDeviceTokens;
+try {
+  const entries = JSON.parse(env.AGENT_DEVICE_TOKENS);
+  if (!entries || typeof entries !== 'object' || Array.isArray(entries)) throw new Error();
+  agentDeviceTokens = Object.fromEntries(Object.entries(entries).map(([deviceId, token]) => {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(deviceId)
+      || typeof token !== 'string' || token.length < 32) throw new Error();
+    return [deviceId.toLowerCase(), token];
+  }));
+} catch {
+  throw new Error('Configuracion de entorno invalida: AGENT_DEVICE_TOKENS');
+}
+
 export const config = {
   ...env,
+  agentDeviceTokens,
   // Si se indica una CA privada, Node la usa para verificar el certificado del controlador LDAP.
   ldapTlsOptions: env.LDAP_CA_CERT_PATH ? { ca: [readFileSync(env.LDAP_CA_CERT_PATH)] } : undefined,
   httpsOptions: env.HTTPS_CERT_PATH ? {
@@ -54,4 +70,14 @@ export function isValidApiToken(candidate) {
   const expected = Buffer.from(config.API_TOKEN);
   const received = Buffer.from(candidate);
   return expected.length === received.length && timingSafeEqual(expected, received);
+}
+
+export function getAgentDeviceId(candidate) {
+  if (typeof candidate !== 'string') return null;
+  const received = Buffer.from(candidate);
+  for (const [deviceId, expectedToken] of Object.entries(config.agentDeviceTokens)) {
+    const expected = Buffer.from(expectedToken);
+    if (expected.length === received.length && timingSafeEqual(expected, received)) return deviceId;
+  }
+  return null;
 }
