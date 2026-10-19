@@ -35,6 +35,20 @@ const Validators = {
     return { ok: true };
   },
 
+  passwordComplexity(password) {
+    const groups = [/\p{Lu}/u, /\p{Ll}/u, /\p{N}/u, /[^\p{L}\p{N}]/u];
+    return groups.filter(pattern => pattern.test(password)).length >= 3;
+  },
+
+  passwordContainsAccountOrName(password, email, fullName) {
+    const username = String(email).split('@')[0].normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Za-z0-9._-]/g, '.').replace(/^[._-]+|[._-]+$/g, '').slice(0, 20).toLowerCase();
+    const blockedParts = [username, ...String(fullName).toLocaleLowerCase().split(/[^\p{L}\p{N}]+/u)]
+      .filter(part => part.length >= 3);
+    const normalizedPassword = password.toLocaleLowerCase();
+    return blockedParts.some(part => normalizedPassword.includes(part));
+  },
+
   // ── Activo ── existing = lista actual para detectar serie duplicada
   asset(data, existing = [], excludeId = null) {
     const errors = {};

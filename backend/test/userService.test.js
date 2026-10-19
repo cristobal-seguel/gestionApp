@@ -34,6 +34,49 @@ test('maps frontend user fields to Samba AD attributes', async () => {
   });
 });
 
+test('rejects a new password containing a part of the users full name', async () => {
+  let created = false;
+  const repository = {
+    async findByUsername() { return null; },
+    async findByEmail() { return null; },
+    async findByRut() { return null; },
+    async create() { created = true; }
+  };
+  const service = new UserService(repository);
+
+  await assert.rejects(
+    service.createFrontend({
+      name: 'Cristobal Seguel', rut: '16.234.567-2', email: 'externo@empresa.cl',
+      password: 'SecureCristobal9!', role: 'Usuario', area: 'RRHH'
+    }),
+    (error) => error.status === 422 && error.errors.password.includes('nombre personal')
+  );
+  assert.equal(created, false);
+});
+
+test('rejects a changed password containing a part of the existing account name', async () => {
+  const currentUser = {
+    id, username: 'cristobal.seguel', displayName: 'Otro Usuario', role: 'Usuario', enabled: true
+  };
+  let updated = false;
+  const repository = {
+    async findById() { return currentUser; },
+    async findByEmail() { return null; },
+    async findByRut() { return null; },
+    async updateById() { updated = true; return currentUser; }
+  };
+  const service = new UserService(repository);
+
+  await assert.rejects(
+    service.updateFrontend(id, {
+      name: 'Otro Usuario', rut: '16.234.567-2', email: 'nuevo@empresa.cl',
+      password: 'SecureCristobal9!', role: 'Usuario', area: 'RRHH'
+    }),
+    (error) => error.status === 422 && error.errors.password.includes('nombre de cuenta')
+  );
+  assert.equal(updated, false);
+});
+
 test('prevents removing the role from the last active administrator', async () => {
   const admin = {
     id, username: 'admin', displayName: 'Admin', rut: '15.678.901-1',

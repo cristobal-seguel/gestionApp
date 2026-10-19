@@ -1,4 +1,5 @@
 import { UserRepository } from '../ldap/userRepository.js';
+import { containsAccountOrName } from './passwordPolicy.js';
 
 const PAGE_SIZE = 100;
 
@@ -47,6 +48,12 @@ function conflict(message, field) {
   });
 }
 
+function validatePasswordIdentity(password, username, fullName) {
+  if (password && containsAccountOrName(password, username, fullName)) {
+    throw conflict('La contraseña no puede contener el nombre de cuenta ni partes del nombre personal de 3 o más caracteres.', 'password');
+  }
+}
+
 export class UserService {
   // El repositorio se puede sustituir por un doble en las pruebas HTTP.
   constructor(repository = new UserRepository()) {
@@ -63,6 +70,7 @@ export class UserService {
 
   // Evita crear dos cuentas con el mismo sAMAccountName.
   async create(data) {
+    validatePasswordIdentity(data.password, data.username, `${data.givenName} ${data.surname}`);
     if (await this.repository.findByUsername(data.username)) {
       throw Object.assign(new Error('El usuario ya existe'), { status: 409, code: 'USER_EXISTS' });
     }
@@ -70,6 +78,11 @@ export class UserService {
   }
 
   async update(username, data) {
+    if (data.password) {
+      const current = await this.repository.findByUsername(username);
+      if (!current) return null;
+      validatePasswordIdentity(data.password, current.username, current.displayName);
+    }
     return this.repository.update(username, data);
   }
 
@@ -111,6 +124,7 @@ export class UserService {
 
   async createFrontend(data) {
     const directoryData = toDirectoryData(data);
+    validatePasswordIdentity(directoryData.password, directoryData.username, directoryData.displayName);
     if (await this.repository.findByUsername(directoryData.username)) {
       throw conflict('Ya existe una cuenta con el correo indicado.', 'email');
     }
@@ -121,6 +135,7 @@ export class UserService {
   async updateFrontend(id, data) {
     const current = await this.repository.findById(id);
     if (!current) return null;
+    validatePasswordIdentity(data.password, current.username, current.displayName);
     await this.assertUnique(data, id);
     if (current.role === 'Administrador' && current.enabled && data.role !== 'Administrador'
       && await this.activeAdminCount() <= 1) {

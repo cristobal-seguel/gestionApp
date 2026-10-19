@@ -1,12 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { hasPasswordComplexity, PASSWORD_COMPLEXITY_MESSAGE } from '../services/passwordPolicy.js';
 
 // Acepta nombres de cuenta simples y acota los datos recibidos desde HTTP.
 const usernameSchema = z.string().min(1).max(20).regex(/^[A-Za-z0-9._-]+$/);
+const passwordSchema = z.string().min(8).max(128).refine(hasPasswordComplexity, PASSWORD_COMPLEXITY_MESSAGE);
 const userFields = {
   username: usernameSchema,
   userPrincipalName: z.string().email().max(256),
-  password: z.string().min(8).max(128),
+  password: passwordSchema,
   givenName: z.string().min(1).max(64),
   surname: z.string().min(1).max(64),
   displayName: z.string().min(1).max(256),
@@ -18,7 +20,7 @@ const userFields = {
 // El alta exige los atributos base; PATCH solo permite cambiar campos explícitos.
 const createSchema = z.object(userFields).strict();
 const updateSchema = z.object({
-  password: userFields.password.optional(),
+  password: passwordSchema.optional(),
   givenName: userFields.givenName.optional(),
   surname: userFields.surname.optional(),
   displayName: userFields.displayName.optional(),
@@ -35,7 +37,7 @@ const frontendUserSchema = z.object({
   name: z.string().trim().min(1).max(256),
   rut: z.string().trim().min(2).max(16),
   email: z.string().trim().email().max(256),
-  password: z.string().min(6).max(128).optional(),
+  password: passwordSchema.optional(),
   role: z.enum(['Usuario', 'Supervisor', 'Administrador']),
   area: z.enum(['RRHH', 'Contabilidad', 'Operaciones', 'Informática', 'Soporte TI', 'Gerencia'])
 }).strict();
@@ -124,7 +126,8 @@ export function createFrontendUserRouter(userService) {
     const id = frontendIdSchema.safeParse(req.params.id);
     if (!id.success) return res.status(400).json({ message: 'Identificador de usuario inválido.', code: 'VALIDATION_ERROR' });
     const removed = await userService.removeById(id.data);
-    if (!removed) return res.status(404).json({ message: 'El usuario ya no existe. Recargue la lista.', code: 'NOT_FOUND' });
+    if (!removed) 
+      return res.status(404).json({ message: 'El usuario ya no existe. Recargue la lista.', code: 'NOT_FOUND' });
     return res.status(204).end();
   });
 

@@ -1,6 +1,7 @@
-import { Attribute, Change } from 'ldapts';
+import { AndFilter, Attribute, Change, EqualityFilter } from 'ldapts';
 import { config } from '../config.js';
 import { createLdapClient, withLdapClient } from './client.js';
+import { syncRoleGroupMembership } from './roleGroups.js';
 
 const USER_ATTRIBUTES = [
   'sAMAccountName', 'givenName', 'sn', 'displayName', 'mail', 'department', 'title',
@@ -51,7 +52,13 @@ function userFilter(username) {
 
 function guidFilter(id) {
   const bytes = Buffer.from(id, 'hex');
-  return `(&(objectCategory=person)(objectClass=user)(objectGUID=${[...bytes].map((byte) => `\\${byte.toString(16).padStart(2, '0')}`).join('')}))`;
+  return new AndFilter({
+    filters: [
+      new EqualityFilter({ attribute: 'objectCategory', value: 'person' }),
+      new EqualityFilter({ attribute: 'objectClass', value: 'user' }),
+      new EqualityFilter({ attribute: 'objectGUID', value: bytes })
+    ]
+  });
 }
 
 // Traduce únicamente los campos editables de la API a cambios LDAP.
@@ -205,6 +212,7 @@ export class UserRepository {
         operation: 'replace',
         modification: new Attribute({ type: 'unicodePwd', values: [passwordValue(data.password)] })
       }));
+      if (data.role !== undefined) await syncRoleGroupMembership(client, dn, data.role);
       return this.findByUsername(data.username);
     });
   }
@@ -231,6 +239,9 @@ export class UserRepository {
     if (changes.length) {
       await withLdapClient((client) => client.modify(user.dn, changes));
     }
+    if (data.role !== undefined) {
+      await withLdapClient((client) => syncRoleGroupMembership(client, user.dn, data.role));
+    }
     return this.findById(user.id);
   }
 
@@ -244,18 +255,25 @@ export class UserRepository {
     return user ? this.updateUser(user, data) : null;
   }
 
+  // El borrado LDAP requiere un DN; resuelve ese DN mediante mail y confirma la identidad.
+  async removeByEmail(email, expectedId) {
+    if (!email) return false;
+    const user = await this.findByEmail(email);
+    if (!user || user.id !== expectedId) return false;
+    await withLdapClient((client) => client.del(user.dn));
+    return true;
+  }
+
   // Elimina la cuenta encontrada; devuelve false si no existía.
   async remove(username) {
     const user = await this.findByUsername(username);
     if (!user) return false;
-    await withLdapClient((client) => client.del(user.dn));
-    return true;
+    return this.removeByEmail(user.email, user.id);
   }
 
   async removeById(id) {
     const user = await this.findById(id);
     if (!user) return false;
-    await withLdapClient((client) => client.del(user.dn));
-    return true;
+    return this.removeByEmail(user.email, user.id);
   }
 }

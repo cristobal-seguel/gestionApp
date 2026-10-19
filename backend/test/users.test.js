@@ -159,12 +159,12 @@ test('creates a validated user and returns 201', async () => {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      username: 'ana', userPrincipalName: 'ana@example.com', password: 'StrongPass123!',
+      username: 'ana', userPrincipalName: 'ana@example.com', password: 'StrongPass123',
       givenName: 'Ana', surname: 'Perez', displayName: 'Ana Perez', enabled: true
     })
   });
   assert.equal(response.status, 201);
-  assert.equal(calls.create.password, 'StrongPass123!');
+  assert.equal(calls.create.password, 'StrongPass123');
   assert.equal((await response.json()).data.username, 'ana');
 });
 
@@ -174,6 +174,20 @@ test('does not call create for invalid user payloads', async () => {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ username: 'bad name', password: 'short' })
   });
+  assert.equal(response.status, 400);
+  assert.equal(calls.create, undefined);
+});
+
+test('rejects legacy passwords that do not meet the three-group complexity rule', async () => {
+  const response = await apiFetch('/api/users', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      username: 'ana', userPrincipalName: 'ana@example.com', password: 'password',
+      givenName: 'Ana', surname: 'Perez', displayName: 'Ana Perez', enabled: true
+    })
+  });
+
   assert.equal(response.status, 400);
   assert.equal(calls.create, undefined);
 });
@@ -194,6 +208,17 @@ test('updates a user and rejects an empty patch', async () => {
   assert.equal((await apiFetch('/api/users/ana', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: '{}' })).status, 400);
 });
 
+test('rejects a legacy password change that does not meet complexity rules', async () => {
+  const response = await apiFetch('/api/users/ana', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ password: 'password' })
+  });
+
+  assert.equal(response.status, 400);
+  assert.equal(calls.update, undefined);
+});
+
 test('deletes an existing user and reports a missing one', async () => {
   assert.equal((await apiFetch('/api/users/ana', { method: 'DELETE' })).status, 204);
   assert.equal((await apiFetch('/api/users/unknown', { method: 'DELETE' })).status, 404);
@@ -212,7 +237,7 @@ test('creates frontend users and validates the Chilean RUT', async () => {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       name: 'Ana Pérez', rut: '16234567-2', email: 'ana.perez@empresa.cl',
-      password: 'StrongPass123!', role: 'Usuario', area: 'RRHH'
+      password: 'StrongPass123', role: 'Usuario', area: 'RRHH'
     })
   });
   assert.equal(response.status, 201);
@@ -229,6 +254,39 @@ test('creates frontend users and validates the Chilean RUT', async () => {
   });
   assert.equal(invalid.status, 422);
   assert.equal((await invalid.json()).errors.rut, 'Ingrese un RUT válido.');
+});
+
+test('rejects frontend user creation with a password shorter than eight characters', async () => {
+  const response = await sessionFetch('/api/v1/users', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Ana Pérez', rut: '16234567-2', email: 'ana.perez@empresa.cl',
+      password: 'Abc1234', role: 'Usuario', area: 'RRHH'
+    })
+  });
+
+  assert.equal(response.status, 422);
+  assert.equal((await response.json()).errors.password, 'String must contain at least 8 character(s)');
+});
+
+test('rejects frontend passwords without three character groups on create and update', async () => {
+  const payload = {
+    name: 'Ana Pérez', rut: '16234567-2', email: 'ana.perez@empresa.cl',
+    password: 'password', role: 'Usuario', area: 'RRHH'
+  };
+  const create = await sessionFetch('/api/v1/users', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload)
+  });
+  assert.equal(create.status, 422);
+  assert.equal((await create.json()).errors.password, 'La contraseña debe incluir caracteres de al menos 3 de estos 4 grupos: mayúsculas, minúsculas, números y símbolos.');
+
+  const update = await sessionFetch(`/api/v1/users/${frontendUser.id}`, {
+    method: 'PUT', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ...payload, password: 'password' })
+  });
+  assert.equal(update.status, 422);
+  assert.equal((await update.json()).errors.password, 'La contraseña debe incluir caracteres de al menos 3 de estos 4 grupos: mayúsculas, minúsculas, números y símbolos.');
 });
 
 test('updates and changes status by the frontend user id', async () => {

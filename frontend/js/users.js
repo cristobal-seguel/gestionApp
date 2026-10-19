@@ -202,9 +202,7 @@ const Users = {
       const req = form.querySelector(`label[for="${id}"] .req`);
       if (req) req.hidden = isEdit;
     });
-    document.getElementById('user-password-hint').textContent = isEdit
-      ? `Déjela en blanco para mantener la actual. Mínimo ${CONFIG.auth.minPasswordLength} caracteres.`
-      : `Mínimo ${CONFIG.auth.minPasswordLength} caracteres.`;
+    document.getElementById('user-password-hint').textContent = `${isEdit ? 'Déjela en blanco para mantener la actual. ' : ''}Mínimo ${CONFIG.auth.minPasswordLength} caracteres y al menos 3 grupos: mayúsculas, minúsculas, números y símbolos.`;
     if (isEdit) {
       const u = Users.selected;
       Ui.form.fill(form, { name: u.name, rut: u.rut, email: u.email, role: u.role, area: u.area });
@@ -226,6 +224,8 @@ const Users = {
     if (!current || password || confirm) {
       if (!password) errors.password = 'Ingrese una contraseña.';
       else if (password.length < min) errors.password = `La contraseña debe tener al menos ${min} caracteres.`;
+      else if (!Validators.passwordComplexity(password)) errors.password = 'La contraseña debe incluir caracteres de al menos 3 de estos 4 grupos: mayúsculas, minúsculas, números y símbolos.';
+      else if (Validators.passwordContainsAccountOrName(password, data.email, data.name)) errors.password = 'La contraseña no puede contener el nombre de cuenta ni partes del nombre personal de 3 o más caracteres.';
       if (!confirm) errors.passwordConfirm = 'Repita la contraseña.';
       else if (password && confirm !== password) errors.passwordConfirm = 'Las contraseñas no coinciden.';
     }

@@ -9,7 +9,7 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test",
-    "check": "node --check src/server.js && node --check src/config.js && node --check src/app.js && node --check src/routes/auth.js && node --check src/routes/users.js && node --check src/services/authService.js && node --check src/services/sessionStore.js && node --check src/services/userService.js && node --check src/ldap/userRepository.js"
+    "check": "node --check src/server.js && node --check src/config.js && node --check src/app.js && node --check src/routes/auth.js && node --check src/routes/users.js && node --check src/services/authService.js && node --check src/services/sessionStore.js && node --check src/services/userService.js && node --check src/ldap/userRepository.js && node --check src/ldap/roleGroups.js"
   },
   "dependencies": {
     "dotenv": "^16.4.7",

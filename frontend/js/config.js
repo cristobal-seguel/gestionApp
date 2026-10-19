@@ -58,7 +58,7 @@ const DEFAULT_CONFIG = {
     storage: 'session',             // 'session' (se borra al cerrar la pestaña) | 'local'
     tokenHeader: 'Authorization',
     tokenPrefix: 'Bearer ',
-    minPasswordLength: 6,
+    minPasswordLength: 8,
     rememberEmail: true,            // muestra "Recordar mi email" en el login
     passwordResetUrl: 'mailto:soporte@gestioapp.cl?subject=Recuperar%20clave',
   },
